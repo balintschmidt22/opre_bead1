@@ -38,6 +38,8 @@ int searchCapacity(Capacity *week, char *day);
 
 bool findInStruct(Capacity *week, char *token);
 
+int getId(const char *fname, const char *name);
+
 int main(void)
 {
   printf("------------------------\n");
@@ -85,6 +87,16 @@ int main(void)
         return -1;
       }
     }
+    /*for (unsigned int i = 0; i < strlen(name); i++)
+    {
+      if (isdigit(name[i]) == 1)
+      {
+        free(name);
+        printf("Name can't contain a number!");
+        return -1;
+      }
+    }*/
+
     printf("Your name is: %s", name);
 
     printf("Enter the days: ");
@@ -163,6 +175,11 @@ void writeToFile(const char *fname, char *name, char *goodDays)
 
   name[strcspn(name, "\n")] = ' ';
 
+  int id;
+  id = getId(fname, name);
+  id++;
+
+  fprintf(f, "%d ", id);
   fputs(name, f);
   fputs("-- ", f);
   fputs(goodDays, f);
@@ -230,15 +247,7 @@ char *tokenize(char *days)
        token != NULL;
        token = strtok_r(NULL, " ", &foo))
   {
-    if (findInStruct(week, token)
-        /*strcmp(token, "Hetfo") == 0 ||
-          strcmp(token, "Kedd") == 0 ||
-          strcmp(token, "Szerda") == 0 ||
-          strcmp(token, "Csutortok") == 0 ||
-          strcmp(token, "Pentek") == 0 ||
-          strcmp(token, "Szombat") == 0 ||
-          strcmp(token, "Vasarnap") == 0*/
-    )
+    if (findInStruct(week, token))
     {
       if (strstr(goodDays, token) == NULL)
       {
@@ -320,6 +329,36 @@ int countInFile(const char *fname, const char *word)
   if (line)
     free(line);
   return count;
+}
+
+int getId(const char *fname, const char *name)
+{
+  FILE *f = fopen(fname, "r");
+  if (f == NULL)
+  {
+    printf("File open error!\n");
+    exit(EXIT_FAILURE);
+  }
+
+  fseek(f, 0, SEEK_END);
+  long size = ftell(f);
+
+  if (0 == size)
+  {
+    return 0;
+  }
+  char buff[sizeof(name) + 120];
+  fseek(f, 0, SEEK_SET); // make sure start from 0
+
+  while (!feof(f))
+  {
+    memset(buff, 0x00, sizeof(name) + 120); // clean buffer
+    fscanf(f, "%[^\n]\n", buff);            // read file *prefer using fscanf
+  }
+  int id;
+  sscanf(buff, "%d", &id);
+
+  return id;
 }
 
 /*char **tokenize(char *days)
