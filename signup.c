@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h> //open,create
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -8,12 +7,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <stdbool.h>
-
-typedef struct
-{
-  char *day;
-  int maxWorker;
-} Capacity;
+#include "signup.h"
 
 Capacity week[7] =
     {{"Hetfo", 3},
@@ -23,28 +17,6 @@ Capacity week[7] =
      {"Pentek", 3},
      {"Szombat", 3},
      {"Vasarnap", 3}};
-
-char *readline(void);
-
-void printline(const char *fname);
-
-void writeToFile(const char *fname, char *name, char *days);
-
-char *tokenize(char *days, int id);
-
-int countInFile(const char *fname, const char *word, int id);
-
-int searchCapacity(Capacity *week, char *day);
-
-bool findInStruct(Capacity *week, char *token);
-
-int getId(const char *fname);
-
-void printByDay(const char *fname, const char *listday);
-
-void removeById(const char *fname, int id);
-
-void modifyById(const char *fname, int id, char *name, char *goodDays);
 
 int main(void)
 {
@@ -148,14 +120,13 @@ int main(void)
 
     int id2;
     id2 = atoi(in_b2);
-    printf("%d\n", id2);
-    if (id2 > 0 && id2 <= getId("list.txt"))
+    if (id2 > 0 && id2 <= getId("list.txt") /*findId("list.txt", id2)*/)
     {
       printf("Enter modified name: ");
       char *name2;
       name2 = readline();
       if (name2 == NULL)
-        return -1;
+        exit(1);
       if (strcmp(name2, "\n") == 0)
       {
         printf("No name given!\n");
@@ -234,7 +205,6 @@ int main(void)
 
     int id;
     id = atoi(in_b);
-    printf("%d\n", id);
     if (id > 0 && id <= getId("list.txt"))
     {
       removeById("list.txt", id);
@@ -294,10 +264,8 @@ void writeToFile(const char *fname, char *name, char *goodDays)
   FILE *f = fopen(fname, "a");
   if (f == NULL)
   {
-    perror("File opening error\n");
-    free(name);
-    free(goodDays);
-    exit(1);
+    perror("File open error!\n");
+    exit(EXIT_FAILURE);
   }
 
   name[strcspn(name, "\n")] = ' ';
@@ -319,8 +287,8 @@ void printline(const char *fname)
   FILE *f = fopen(fname, "r");
   if (f == NULL)
   {
-    perror("File opening error\n");
-    exit(1);
+    perror("File open error!\n");
+    exit(EXIT_FAILURE);
   }
   while ((c = getc(f)) != EOF)
     putchar(c);
@@ -470,7 +438,7 @@ int countInFile(const char *fname, const char *word, int id)
     exit(EXIT_FAILURE);
   }
 
-  int(lineId);
+  int lineId;
   while ((read = getline(&line, &len, f)) != -1)
   {
     sscanf(line, "%d", &lineId);
