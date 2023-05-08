@@ -2,19 +2,21 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <stdbool.h>
+#include <signal.h>
 #include "signup.h"
 
 Capacity week[7] =
-    {{"Hetfo", 3},
-     {"Kedd", 3},
+    {{"Hetfo", 11},
+     {"Kedd", 11},
      {"Szerda", 3},
      {"Csutortok", 3},
-     {"Pentek", 3},
+     {"Pentek", 11},
      {"Szombat", 3},
      {"Vasarnap", 3}};
 
@@ -27,7 +29,8 @@ int main(void)
   printf("3. Delete worker\n");
   printf("4. List all workers\n");
   printf("5. List workers by given day\n");
-  printf("Choose a number from 1-5: ");
+  printf("6. Transport worker on given day\n");
+  printf("Choose a number from 1-6: ");
   char mode;
   mode = fgetc(stdin);
   if (mode == EOF || mode == '\n')
@@ -120,7 +123,7 @@ int main(void)
 
     int id2;
     id2 = atoi(in_b2);
-    if (id2 > 0 && id2 <= getId("list.txt") /*findId("list.txt", id2)*/)
+    if (id2 > 0 && id2 <= getId("list.txt"))
     {
       printf("Enter modified name: ");
       char *name2;
@@ -225,6 +228,32 @@ int main(void)
 
   case '5':
     printf("Enter the day: ");
+    char *day5;
+    day5 = readline();
+    if (day5 == NULL)
+    {
+      return -1;
+    }
+    char listday5[sizeof(day5)];
+    sscanf(day5, "%s", listday5);
+    if (findInStruct(week, listday5))
+    {
+      printf("---\n");
+      printf("Listing workers who work on %s\n", listday5);
+      printByDay("list.txt", listday5);
+      free(day5);
+    }
+    else
+    {
+      printf("Invalid day!\n");
+      printf("------------------------\n");
+      free(day5);
+      return -1;
+    }
+    break;
+
+  case '6':
+    printf("Enter the day: ");
     char *day;
     day = readline();
     if (day == NULL)
@@ -238,6 +267,103 @@ int main(void)
       printf("---\n");
       printf("Listing workers who work on %s\n", listday);
       printByDay("list.txt", listday);
+
+      int workers;
+      workers = countInFile("list.txt", listday, 0);
+      printf("Number of workers: %d\n", workers);
+
+      if (workers > 0)
+      {
+        int status;
+
+        int pipefd[2];
+        char lines1[1024];
+
+        if (pipe(pipefd) == -1)
+        {
+          perror("Hiba a pipe nyitaskor!");
+          exit(EXIT_FAILURE);
+        }
+
+        signal(SIGUSR1, handler);
+
+        pid_t bus1 = fork();
+
+        if (bus1 < 0)
+        {
+          perror("The 1st bus calling was not succesful\n");
+          exit(1);
+        }
+
+        if (bus1 > 0)
+        {
+          if (workers > 5)
+          {
+            signal(SIGUSR2, handler);
+
+            pid_t bus2 = fork();
+
+            if (bus2 < 0)
+            {
+              perror("The 2nd bus calling was not succesful\n");
+              exit(1);
+            }
+
+            if (bus2 > 0) // parent with more workers than 5
+            {
+              pause();
+
+              waitpid(bus1, &status, 0);
+              waitpid(bus2, &status, 0);
+
+              printf("parent of bus1,bus2\n");
+            }
+            else // bus2
+            {
+              kill(getppid(), SIGUSR2);
+
+              printf("bus2\n");
+            }
+          }
+          else // parent with less workers than 5
+          {
+            pause();
+
+            close(pipefd[1]); // closing write
+
+            waitpid(bus1, &status, 0);
+
+            printf("parent of bus1\n");
+
+            int l;
+            read(pipefd[0], &l, sizeof(l));
+            int c = read(pipefd[0], lines1, l);
+            printf("parent read this from bus1: %s - %i\n", lines1, c);
+            close(pipefd[0]);
+          }
+        }
+        else // bus1
+        {
+          kill(getppid(), SIGUSR1);
+
+          printf("bus1\n");
+
+          close(pipefd[0]); // closing read
+
+          int l = strlen("Sample line") + 1;
+          write(pipefd[1], &l, sizeof(l));
+          write(pipefd[1], "Sample text", 12);
+          close(pipefd[1]);
+
+          fflush(NULL);
+          printf("BUS1 wrote\n");
+        }
+      }
+      else
+      {
+        printf("No workers on the given day!\n");
+      }
+
       free(day);
     }
     else
@@ -255,7 +381,7 @@ int main(void)
     return -1;
   }
 
-  printf("------------------------\n");
+  // printf("------------------------\n");
   return 0;
 }
 
@@ -569,4 +695,9 @@ void modifyById(const char *fname, int id, char *name, char *goodDays)
 
   if (line)
     free(line);
+}
+
+void handler(int signumber)
+{
+  printf("Signal with number %i has arrived\n", signumber);
 }

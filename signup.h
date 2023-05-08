@@ -29,4 +29,6 @@ void removeById(const char *fname, int id);
 
 void modifyById(const char *fname, int id, char *name, char *goodDays);
 
+void handler(int signumber);
+
 #endif
