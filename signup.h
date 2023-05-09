@@ -7,6 +7,8 @@ typedef struct
   int maxWorker;
 } Capacity;
 
+void transport(const char *fname, const char *listday, int pipefd[2], const int unit);
+
 char *readline(void);
 
 void printline(const char *fname);

@@ -303,60 +303,98 @@ int main(void)
 
             pid_t bus2 = fork();
 
+            char lines2[1024];
+
             if (bus2 < 0)
             {
               perror("The 2nd bus calling was not succesful\n");
               exit(1);
             }
 
-            if (bus2 > 0) // parent with more workers than 5
+            if (bus2 > 0) // parent with more workers than 5 (bus1,bus2)
             {
               pause();
+              pause();
+
+              close(pipefd[0]); // closing read
+
+              transport("list.txt", listday, pipefd, 1);
+              transport("list.txt", listday, pipefd, 2);
+              close(pipefd[1]);
 
               waitpid(bus1, &status, 0);
               waitpid(bus2, &status, 0);
-
-              printf("parent of bus1,bus2\n");
             }
             else // bus2
             {
               kill(getppid(), SIGUSR2);
 
-              printf("bus2\n");
+              close(pipefd[1]);
+
+              sleep(0.1);
+
+              int l;
+
+              if (workers > 10)
+              {
+                for (int i = 5; i < 10; i++)
+                {
+                  read(pipefd[0], &l, sizeof(l));
+                  read(pipefd[0], lines2, l);
+                  printf("bus2 transporting: %s\n", lines2);
+                }
+              }
+              else
+              {
+                for (int i = 5; i < workers; i++)
+                {
+                  read(pipefd[0], &l, sizeof(l));
+                  read(pipefd[0], lines2, l);
+                  printf("bus2 transporting: %s\n", lines2);
+                }
+              }
+
+              close(pipefd[0]);
             }
           }
-          else // parent with less workers than 5
+          else // parent with less workers than 5 (bus1)
           {
             pause();
 
-            close(pipefd[1]); // closing write
+            close(pipefd[0]); // closing read
+
+            transport("list.txt", listday, pipefd, 1);
+            close(pipefd[1]);
 
             waitpid(bus1, &status, 0);
-
-            printf("parent of bus1\n");
-
-            int l;
-            read(pipefd[0], &l, sizeof(l));
-            int c = read(pipefd[0], lines1, l);
-            printf("parent read this from bus1: %s - %i\n", lines1, c);
-            close(pipefd[0]);
           }
         }
         else // bus1
         {
           kill(getppid(), SIGUSR1);
 
-          printf("bus1\n");
+          close(pipefd[1]); // closing write
 
-          close(pipefd[0]); // closing read
-
-          int l = strlen("Sample line") + 1;
-          write(pipefd[1], &l, sizeof(l));
-          write(pipefd[1], "Sample text", 12);
-          close(pipefd[1]);
-
-          fflush(NULL);
-          printf("BUS1 wrote\n");
+          int l;
+          if (workers > 5)
+          {
+            for (int i = 0; i < 5; i++)
+            {
+              read(pipefd[0], &l, sizeof(l));
+              read(pipefd[0], lines1, l);
+              printf("bus1 transporting: %s\n", lines1);
+            }
+          }
+          else
+          {
+            for (int i = 0; i < workers; i++)
+            {
+              read(pipefd[0], &l, sizeof(l));
+              read(pipefd[0], lines1, l);
+              printf("bus1 transporting: %s\n", lines1);
+            }
+          }
+          close(pipefd[0]);
         }
       }
       else
@@ -383,6 +421,52 @@ int main(void)
 
   // printf("------------------------\n");
   return 0;
+}
+
+void transport(const char *fname, const char *listday, int pipefd[2], const int unit)
+{
+  FILE *f;
+  f = fopen(fname, "r");
+  if (f == NULL)
+  {
+    perror("File open error!\n");
+    exit(EXIT_FAILURE);
+  }
+  char *line = NULL;
+  size_t len = 0;
+  ssize_t read;
+  int count = 0;
+
+  while ((read = getline(&line, &len, f)) != -1)
+  {
+    if (strstr(line, listday) != NULL)
+    {
+      if (unit == 1)
+      {
+        if (count < 5)
+        {
+          int l = strlen(line) + 1;
+          write(pipefd[1], &l, sizeof(l));
+          write(pipefd[1], line, l);
+        }
+      }
+      else if (unit == 2)
+      {
+        if (count >= 5 && count < 10)
+        {
+          int l = strlen(line) + 1;
+          write(pipefd[1], &l, sizeof(l));
+          write(pipefd[1], line, l);
+        }
+      }
+      count++;
+    }
+  }
+  fflush(NULL);
+
+  fclose(f);
+  if (line)
+    free(line);
 }
 
 void writeToFile(const char *fname, char *name, char *goodDays)
@@ -699,5 +783,12 @@ void modifyById(const char *fname, int id, char *name, char *goodDays)
 
 void handler(int signumber)
 {
-  printf("Signal with number %i has arrived\n", signumber);
+  if (signumber == 10)
+  {
+    printf("Signal from bus1 arrived!\n");
+  }
+  else if (signumber == 12)
+  {
+    printf("Signal from bus2 arrived!\n");
+  }
 }
