@@ -289,13 +289,28 @@ int main(int argc, char *argv[])
         int pipefd[2];
         char lines1[1024];
 
+        int pipefd2[2];
+
+        if (pipe(pipefd2) == -1)
+        {
+          perror("Hiba a pipe2 nyitaskor!");
+          exit(EXIT_FAILURE);
+        }
+
         if (pipe(pipefd) == -1)
         {
           perror("Hiba a pipe nyitaskor!");
           exit(EXIT_FAILURE);
         }
 
-        signal(SIGUSR1, handler);
+        struct sigaction sigact;
+        sigact.sa_handler = handler;  // SIG_DFL,SIG_IGN
+        sigemptyset(&sigact.sa_mask); // during execution of handler these signals will be blocked plus the signal
+        // now only the arriving signal, SIGTERM will be blocked
+        sigact.sa_flags = 0; // nothing special behaviour
+        sigaction(SIGTERM, &sigact, NULL);
+        sigaction(SIGUSR1, &sigact, NULL);
+        // signal(SIGUSR1, handler);
 
         pid_t bus1 = fork();
 
@@ -321,7 +336,9 @@ int main(int argc, char *argv[])
         {
           if (workers > 5)
           {
-            signal(SIGUSR2, handler);
+            // signal(SIGUSR2, handler);
+
+            sigaction(SIGUSR2, &sigact, NULL);
 
             pid_t bus2 = fork();
 
@@ -347,18 +364,22 @@ int main(int argc, char *argv[])
 
             if (bus2 > 0) // parent with more workers than 5 (bus1,bus2)
             {
-              close(pipefd[0]); // closing read
+              // pause();
+              sigset_t sigset;
+              sigfillset(&sigset);
+              sigdelset(&sigset, SIGUSR1);
+              sigdelset(&sigset, SIGUSR2);
+              sigsuspend(&sigset);
 
-              pause();
-              pause();
+              close(pipefd[0]);
+              close(pipefd2[0]); // closing read
 
-              transport("list.txt", listday, pipefd, 1);
+              transport("list.txt", listday, pipefd, pipefd2, 1);
 
-              transport("list.txt", listday, pipefd, 2);
               close(pipefd[1]);
+              close(pipefd2[1]);
 
               waitpid(bus1, &status, 0);
-
               waitpid(bus2, &status, 0);
 
               fogad(uzenetsor, 1);
@@ -376,7 +397,7 @@ int main(int argc, char *argv[])
             {
               kill(getppid(), SIGUSR2);
 
-              close(pipefd[1]);
+              close(pipefd2[1]);
 
               int l;
 
@@ -384,9 +405,9 @@ int main(int argc, char *argv[])
               {
                 for (int i = 5; i < 10; i++)
                 {
-                  read(pipefd[0], &l, sizeof(l));
-                  read(pipefd[0], lines2, l);
-                  printf("bus2 transporting: %s\n", lines2);
+                  read(pipefd2[0], &l, sizeof(l));
+                  read(pipefd2[0], lines2, l);
+                  printf("bus2 transporting: %s", lines2);
                 }
 
                 kuld(uzenetsor2, 2, 5);
@@ -395,9 +416,9 @@ int main(int argc, char *argv[])
               {
                 for (int i = 5; i < workers; i++)
                 {
-                  read(pipefd[0], &l, sizeof(l));
-                  read(pipefd[0], lines2, l);
-                  printf("bus2 transporting: %s\n", lines2);
+                  read(pipefd2[0], &l, sizeof(l));
+                  read(pipefd2[0], lines2, l);
+                  printf("bus2 transporting: %s", lines2);
                 }
 
                 kuld(uzenetsor2, 2, workers - 5);
@@ -408,12 +429,20 @@ int main(int argc, char *argv[])
           }
           else // parent with less workers than 5 (bus1)
           {
-            pause();
+            // pause();
+
+            sigset_t sigset;
+            sigfillset(&sigset);
+            sigdelset(&sigset, SIGUSR1);
+            sigdelset(&sigset, SIGUSR2);
+            sigsuspend(&sigset);
 
             close(pipefd[0]); // closing read
+            close(pipefd2[0]);
 
-            transport("list.txt", listday, pipefd, 1);
+            transport("list.txt", listday, pipefd, pipefd2, 1);
             close(pipefd[1]);
+            close(pipefd2[1]);
 
             waitpid(bus1, &status, 0);
 
@@ -429,6 +458,8 @@ int main(int argc, char *argv[])
           kill(getppid(), SIGUSR1);
 
           close(pipefd[1]); // closing write
+          close(pipefd2[1]);
+          close(pipefd2[0]);
 
           int l;
           if (workers > 5)
@@ -437,7 +468,7 @@ int main(int argc, char *argv[])
             {
               read(pipefd[0], &l, sizeof(l));
               read(pipefd[0], lines1, l);
-              printf("bus1 transporting: %s\n", lines1);
+              printf("bus1 transporting: %s", lines1);
             }
 
             kuld(uzenetsor, 1, 5);
@@ -448,7 +479,7 @@ int main(int argc, char *argv[])
             {
               read(pipefd[0], &l, sizeof(l));
               read(pipefd[0], lines1, l);
-              printf("bus1 transporting: %s\n", lines1);
+              printf("bus1 transporting: %s", lines1);
             }
 
             kuld(uzenetsor, 1, workers);
@@ -521,7 +552,7 @@ int fogad(int uzenetsor, long mtype)
   return 0;
 }
 
-void transport(const char *fname, const char *listday, int pipefd[2], const int unit)
+void transport(const char *fname, const char *listday, int pipefd[2], int pipefd2[2], const int unit)
 {
   FILE *f;
   f = fopen(fname, "r");
@@ -547,14 +578,11 @@ void transport(const char *fname, const char *listday, int pipefd[2], const int 
           write(pipefd[1], &l, sizeof(l));
           write(pipefd[1], line, l);
         }
-      }
-      else if (unit == 2)
-      {
-        if (count >= 5 && count < 10)
+        else if (count >= 5 && count < 10)
         {
           int l = strlen(line) + 1;
-          write(pipefd[1], &l, sizeof(l));
-          write(pipefd[1], line, l);
+          write(pipefd2[1], &l, sizeof(l));
+          write(pipefd2[1], line, l);
         }
       }
       count++;

@@ -11,7 +11,7 @@ int kuld(int uzenetsor, long mtype, int worker);
 
 int fogad(int uzenetsor, long mtype);
 
-void transport(const char *fname, const char *listday, int pipefd[2], const int unit);
+void transport(const char *fname, const char *listday, int pipefd[2], int pipefd2[2], const int unit);
 
 char *readline(void);
 
