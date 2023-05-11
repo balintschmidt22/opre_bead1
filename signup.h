@@ -7,6 +7,10 @@ typedef struct
   int maxWorker;
 } Capacity;
 
+int kuld(int uzenetsor, long mtype, int worker);
+
+int fogad(int uzenetsor, long mtype);
+
 void transport(const char *fname, const char *listday, int pipefd[2], const int unit);
 
 char *readline(void);

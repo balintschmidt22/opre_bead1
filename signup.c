@@ -3,6 +3,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
@@ -20,7 +22,14 @@ Capacity week[7] =
      {"Szombat", 3},
      {"Vasarnap", 3}};
 
-int main(void)
+struct uzenet
+{
+  // kezdés longgal!
+  long mtype; // ez egy szabadon hasznalhato ertek, pl uzenetek osztalyozasara
+  int worker;
+};
+
+int main(int argc, char *argv[])
 {
   printf("------------------------\n");
   printf("Hi! What would you like to do?\n");
@@ -271,6 +280,7 @@ int main(void)
       int workers;
       workers = countInFile("list.txt", listday, 0);
       printf("Number of workers: %d\n", workers);
+      printf("-------\n");
 
       if (workers > 0)
       {
@@ -288,6 +298,18 @@ int main(void)
         signal(SIGUSR1, handler);
 
         pid_t bus1 = fork();
+
+        int uzenetsor;
+        key_t kulcs;
+
+        kulcs = ftok(argv[0], 1);
+
+        uzenetsor = msgget(kulcs, 0600 | IPC_CREAT);
+        if (uzenetsor < 0)
+        {
+          perror("msgget");
+          return 1;
+        }
 
         if (bus1 < 0)
         {
@@ -311,27 +333,50 @@ int main(void)
               exit(1);
             }
 
+            int uzenetsor2;
+            key_t kulcs2;
+
+            kulcs2 = ftok(argv[0], 2);
+
+            uzenetsor2 = msgget(kulcs2, 0600 | IPC_CREAT);
+            if (uzenetsor2 < 0)
+            {
+              perror("msgget");
+              return 1;
+            }
+
             if (bus2 > 0) // parent with more workers than 5 (bus1,bus2)
             {
-              pause();
-              pause();
-
               close(pipefd[0]); // closing read
 
+              pause();
+              pause();
+
               transport("list.txt", listday, pipefd, 1);
+
               transport("list.txt", listday, pipefd, 2);
               close(pipefd[1]);
 
               waitpid(bus1, &status, 0);
+
               waitpid(bus2, &status, 0);
+
+              fogad(uzenetsor, 1);
+              fogad(uzenetsor2, 2);
+
+              status = msgctl(uzenetsor, IPC_RMID, NULL);
+              if (status < 0)
+                perror("msgctl");
+
+              status = msgctl(uzenetsor2, IPC_RMID, NULL);
+              if (status < 0)
+                perror("msgctl");
             }
             else // bus2
             {
               kill(getppid(), SIGUSR2);
 
               close(pipefd[1]);
-
-              sleep(0.1);
 
               int l;
 
@@ -343,6 +388,8 @@ int main(void)
                   read(pipefd[0], lines2, l);
                   printf("bus2 transporting: %s\n", lines2);
                 }
+
+                kuld(uzenetsor2, 2, 5);
               }
               else
               {
@@ -352,6 +399,8 @@ int main(void)
                   read(pipefd[0], lines2, l);
                   printf("bus2 transporting: %s\n", lines2);
                 }
+
+                kuld(uzenetsor2, 2, workers - 5);
               }
 
               close(pipefd[0]);
@@ -367,6 +416,12 @@ int main(void)
             close(pipefd[1]);
 
             waitpid(bus1, &status, 0);
+
+            fogad(uzenetsor, 1);
+
+            status = msgctl(uzenetsor, IPC_RMID, NULL);
+            if (status < 0)
+              perror("msgctl");
           }
         }
         else // bus1
@@ -384,6 +439,8 @@ int main(void)
               read(pipefd[0], lines1, l);
               printf("bus1 transporting: %s\n", lines1);
             }
+
+            kuld(uzenetsor, 1, 5);
           }
           else
           {
@@ -393,6 +450,8 @@ int main(void)
               read(pipefd[0], lines1, l);
               printf("bus1 transporting: %s\n", lines1);
             }
+
+            kuld(uzenetsor, 1, workers);
           }
           close(pipefd[0]);
         }
@@ -420,6 +479,45 @@ int main(void)
   }
 
   // printf("------------------------\n");
+  return 0;
+}
+
+int kuld(int uzenetsor, long mtype, int worker)
+{
+  const struct uzenet uz = {mtype, worker};
+  int status;
+
+  status = msgsnd(uzenetsor, &uz, sizeof(uz.worker), 0);
+
+  if (status < 0)
+    perror("msgsnd");
+  return 0;
+}
+
+int fogad(int uzenetsor, long mtype)
+{
+  struct uzenet uz;
+  int status;
+  // az utolso parameter(0) az uzenet azonositoszama
+  // ha az 0, akkor a sor elso uzenetet vesszuk ki
+  // ha >0 (5), akkor az 5-os uzenetekbol a kovetkezot
+  // vesszuk ki a sorbol
+  status = msgrcv(uzenetsor, &uz, 1024, mtype, 0);
+
+  if (status < 0)
+    perror("msgsnd");
+  else
+  {
+    printf("-------\n");
+    if (uz.worker == 1)
+    {
+      printf("bus%ld transported %d worker!\n", uz.mtype, uz.worker);
+    }
+    else
+    {
+      printf("bus%ld transported %d workers!\n", uz.mtype, uz.worker);
+    }
+  }
   return 0;
 }
 
