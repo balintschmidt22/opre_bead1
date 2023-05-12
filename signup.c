@@ -29,6 +29,8 @@ struct uzenet
   int worker;
 };
 
+int sigcnt = 0;
+
 int main(int argc, char *argv[])
 {
   printf("------------------------\n");
@@ -40,6 +42,7 @@ int main(int argc, char *argv[])
   printf("5. List workers by given day\n");
   printf("6. Transport worker on given day\n");
   printf("Choose a number from 1-6: ");
+
   char mode;
   mode = fgetc(stdin);
   if (mode == EOF || mode == '\n')
@@ -303,14 +306,14 @@ int main(int argc, char *argv[])
           exit(EXIT_FAILURE);
         }
 
-        struct sigaction sigact;
-        sigact.sa_handler = handler;  // SIG_DFL,SIG_IGN
-        sigemptyset(&sigact.sa_mask); // during execution of handler these signals will be blocked plus the signal
-        // now only the arriving signal, SIGTERM will be blocked
-        sigact.sa_flags = 0; // nothing special behaviour
-        sigaction(SIGTERM, &sigact, NULL);
-        sigaction(SIGUSR1, &sigact, NULL);
-        // signal(SIGUSR1, handler);
+        // struct sigaction sigact;
+        // sigact.sa_handler = handler;  // SIG_DFL,SIG_IGN
+        // sigemptyset(&sigact.sa_mask); // during execution of handler these signals will be blocked plus the signal
+        // // now only the arriving signal, SIGTERM will be blocked
+        // sigact.sa_flags = 0; // nothing special behaviour
+        // sigaction(SIGTERM, &sigact, NULL);
+        // sigaction(SIGUSR1, &sigact, NULL);
+        signal(SIGUSR1, handler);
 
         pid_t bus1 = fork();
 
@@ -336,9 +339,9 @@ int main(int argc, char *argv[])
         {
           if (workers > 5)
           {
-            // signal(SIGUSR2, handler);
+            signal(SIGUSR2, handler);
 
-            sigaction(SIGUSR2, &sigact, NULL);
+            // sigaction(SIGUSR2, &sigact, NULL);
 
             pid_t bus2 = fork();
 
@@ -364,12 +367,16 @@ int main(int argc, char *argv[])
 
             if (bus2 > 0) // parent with more workers than 5 (bus1,bus2)
             {
-              // pause();
-              sigset_t sigset;
-              sigfillset(&sigset);
-              sigdelset(&sigset, SIGUSR1);
-              sigdelset(&sigset, SIGUSR2);
-              sigsuspend(&sigset);
+              pause();
+              // sigset_t sigset;
+              // sigfillset(&sigset);
+              // sigdelset(&sigset, SIGUSR1);
+              // sigdelset(&sigset, SIGUSR2);
+              // sigsuspend(&sigset);
+
+              while (sigcnt != 2)
+              {
+              }
 
               close(pipefd[0]);
               close(pipefd2[0]); // closing read
@@ -395,6 +402,8 @@ int main(int argc, char *argv[])
             }
             else // bus2
             {
+              sleep(1);
+
               kill(getppid(), SIGUSR2);
 
               close(pipefd2[1]);
@@ -912,9 +921,11 @@ void handler(int signumber)
   if (signumber == 10)
   {
     printf("Signal from bus1 arrived!\n");
+    sigcnt++;
   }
   else if (signumber == 12)
   {
     printf("Signal from bus2 arrived!\n");
+    sigcnt++;
   }
 }
