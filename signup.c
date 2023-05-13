@@ -29,8 +29,6 @@ struct uzenet
   int worker;
 };
 
-int sigcnt = 0;
-
 int main(int argc, char *argv[])
 {
   printf("------------------------\n");
@@ -368,15 +366,7 @@ int main(int argc, char *argv[])
             if (bus2 > 0) // parent with more workers than 5 (bus1,bus2)
             {
               pause();
-              // sigset_t sigset;
-              // sigfillset(&sigset);
-              // sigdelset(&sigset, SIGUSR1);
-              // sigdelset(&sigset, SIGUSR2);
-              // sigsuspend(&sigset);
-
-              while (sigcnt != 2)
-              {
-              }
+              pause();
 
               close(pipefd[0]);
               close(pipefd2[0]); // closing read
@@ -402,7 +392,7 @@ int main(int argc, char *argv[])
             }
             else // bus2
             {
-              sleep(1);
+              sleep(2);
 
               kill(getppid(), SIGUSR2);
 
@@ -434,17 +424,13 @@ int main(int argc, char *argv[])
               }
 
               close(pipefd[0]);
+
+              return 0;
             }
           }
           else // parent with less workers than 5 (bus1)
           {
-            // pause();
-
-            sigset_t sigset;
-            sigfillset(&sigset);
-            sigdelset(&sigset, SIGUSR1);
-            sigdelset(&sigset, SIGUSR2);
-            sigsuspend(&sigset);
+            pause();
 
             close(pipefd[0]); // closing read
             close(pipefd2[0]);
@@ -464,6 +450,8 @@ int main(int argc, char *argv[])
         }
         else // bus1
         {
+          sleep(1);
+
           kill(getppid(), SIGUSR1);
 
           close(pipefd[1]); // closing write
@@ -494,6 +482,8 @@ int main(int argc, char *argv[])
             kuld(uzenetsor, 1, workers);
           }
           close(pipefd[0]);
+
+          return 0;
         }
       }
       else
@@ -921,11 +911,9 @@ void handler(int signumber)
   if (signumber == 10)
   {
     printf("Signal from bus1 arrived!\n");
-    sigcnt++;
   }
   else if (signumber == 12)
   {
     printf("Signal from bus2 arrived!\n");
-    sigcnt++;
   }
 }
